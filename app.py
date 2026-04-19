@@ -23,7 +23,7 @@ TEXTS = {
         "video_analysis": "Video Analysis",
         "angle_trend": "Joint Angle Trends over Time",
         "no_pose": "No human pose detected. Please upload a clear image/video.",
-        "processing": "Processing...",
+        "processing": "Processing video, please wait...",
         "left_knee": "Left Knee",
         "right_knee": "Right Knee",
         "left_hip": "Left Hip",
@@ -33,7 +33,8 @@ TEXTS = {
         "left_elbow": "Left Elbow",
         "right_elbow": "Right Elbow",
         "left_shoulder": "Left Shoulder",
-        "right_shoulder": "Right Shoulder"
+        "right_shoulder": "Right Shoulder",
+        "download_data": "Download Angle Data (CSV)"
     },
     "ko": {
         "title": "움직임 평가 및 AI 분석 플랫폼",
@@ -48,7 +49,7 @@ TEXTS = {
         "video_analysis": "비디오 분석",
         "angle_trend": "시간에 따른 관절 각도 변화",
         "no_pose": "인체 자세가 감지되지 않았습니다. 선명한 이미지/비디오를 업로드하세요.",
-        "processing": "처리 중...",
+        "processing": "비디오 처리 중입니다. 잠시만 기다려주세요...",
         "left_knee": "왼쪽 무릎",
         "right_knee": "오른쪽 무릎",
         "left_hip": "왼쪽 엉덩이",
@@ -58,7 +59,8 @@ TEXTS = {
         "left_elbow": "왼쪽 팔꿈치",
         "right_elbow": "오른쪽 팔꿈치",
         "left_shoulder": "왼쪽 어깨",
-        "right_shoulder": "오른쪽 어깨"
+        "right_shoulder": "오른쪽 어깨",
+        "download_data": "각도 데이터 다운로드 (CSV)"
     },
     "zh": {
         "title": "运动评估与AI分析平台",
@@ -73,7 +75,7 @@ TEXTS = {
         "video_analysis": "视频分析",
         "angle_trend": "关节角度随时间变化趋势",
         "no_pose": "未检测到人体姿态，请上传清晰的图片/视频。",
-        "processing": "处理中...",
+        "processing": "正在处理视频，请稍候...",
         "left_knee": "左膝",
         "right_knee": "右膝",
         "left_hip": "左髋",
@@ -83,7 +85,8 @@ TEXTS = {
         "left_elbow": "左肘",
         "right_elbow": "右肘",
         "left_shoulder": "左肩",
-        "right_shoulder": "右肩"
+        "right_shoulder": "右肩",
+        "download_data": "下载角度数据 (CSV)"
     }
 }
 
@@ -97,6 +100,7 @@ def calculate_angle(a, b, c):
     return angle
 
 def process_frame(image, pose):
+    """处理单帧，返回标注图像和角度字典"""
     image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     results = pose.process(image_rgb)
     angles = {}
@@ -186,42 +190,28 @@ if analyze and uploaded_file:
         else:
             st.warning(t["no_pose"])
     
-    else:  # 视频分析 - 修复版本（无动态帧更新）
+    else:  # 视频分析 - 稳定版：无实时帧显示，只显示最终图表和下载
         st.subheader(t["video_analysis"])
-        tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
-        tfile.write(uploaded_file.read())
-        cap = cv2.VideoCapture(tfile.name)
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        frame_angles = []
-        progress = st.progress(0)
-        status = st.empty()
+        with st.spinner(t["processing"]):
+            tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
+            tfile.write(uploaded_file.read())
+            cap = cv2.VideoCapture(tfile.name)
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            frame_angles = []
+            
+            for i in range(total_frames):
+                ret, frame = cap.read()
+                if not ret: break
+                _, angles = process_frame(frame, pose)
+                if angles:
+                    angles['frame'] = i
+                    frame_angles.append(angles)
+            cap.release()
+            os.unlink(tfile.name)
         
-        # 只保存第一帧用于显示预览（避免 DOM 冲突）
-        first_processed_frame = None
-        
-        for i in range(total_frames):
-            ret, frame = cap.read()
-            if not ret: break
-            processed, angles = process_frame(frame, pose)
-            if i == 0 and processed is not None:
-                first_processed_frame = cv2.cvtColor(processed, cv2.COLOR_BGR2RGB)
-            if angles:
-                angles['frame'] = i
-                frame_angles.append(angles)
-            progress.progress((i+1)/total_frames)
-            status.text(f"{t['processing']} {int((i+1)/total_frames*100)}%")
-        cap.release()
-        os.unlink(tfile.name)
-        
-        # 显示第一帧分析结果
-        if first_processed_frame is not None:
-            st.image(first_processed_frame, caption="First frame analysis result", use_container_width=True)
-        else:
-            st.warning(t["no_pose"])
-        
-        # 显示角度变化趋势图
         if frame_angles:
             df_angles = pd.DataFrame(frame_angles)
+            # 显示角度趋势图
             plot_joints = ['left_knee', 'right_knee', 'left_hip', 'right_hip']
             existing = [j for j in plot_joints if j in df_angles.columns]
             if existing:
@@ -231,6 +221,10 @@ if analyze and uploaded_file:
                     fig.add_trace(go.Scatter(x=df_angles['frame'], y=df_angles[j], mode='lines', name=name_map[j]))
                 fig.update_layout(title=t["angle_trend"], xaxis_title="Frame", yaxis_title="Angle (deg)", template='plotly_white')
                 st.plotly_chart(fig, use_container_width=True)
+            
+            # 提供下载
+            csv_data = df_angles.to_csv(index=False).encode('utf-8')
+            st.download_button(t["download_data"], csv_data, "joint_angles.csv", "text/csv")
         else:
             st.warning(t["no_pose"])
     
