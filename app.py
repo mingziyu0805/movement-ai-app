@@ -7,7 +7,6 @@ import tempfile
 import os
 from PIL import Image
 import plotly.graph_objects as go
-from scipy import stats
 
 # ================== 多语言字典 ==================
 TEXTS = {
@@ -172,7 +171,6 @@ if analyze and uploaded_file:
         if angles:
             st.subheader(t["joint_angles"])
             df = pd.DataFrame([(k.replace('_',' ').title(), v) for k,v in angles.items() if v], columns=["Joint", "Angle (deg)"])
-            # 翻译关节名
             name_map = {
                 'left_hip': t["left_hip"], 'right_hip': t["right_hip"],
                 'left_knee': t["left_knee"], 'right_knee': t["right_knee"],
@@ -188,7 +186,7 @@ if analyze and uploaded_file:
         else:
             st.warning(t["no_pose"])
     
-    else:  # 视频
+    else:  # 视频分析 - 修复版本（无动态帧更新）
         st.subheader(t["video_analysis"])
         tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
         tfile.write(uploaded_file.read())
@@ -197,25 +195,33 @@ if analyze and uploaded_file:
         frame_angles = []
         progress = st.progress(0)
         status = st.empty()
-        frame_placeholder = st.empty()
+        
+        # 只保存第一帧用于显示预览（避免 DOM 冲突）
+        first_processed_frame = None
         
         for i in range(total_frames):
             ret, frame = cap.read()
             if not ret: break
             processed, angles = process_frame(frame, pose)
+            if i == 0 and processed is not None:
+                first_processed_frame = cv2.cvtColor(processed, cv2.COLOR_BGR2RGB)
             if angles:
                 angles['frame'] = i
                 frame_angles.append(angles)
-            if i % max(1, total_frames//50) == 0:
-                frame_placeholder.image(cv2.cvtColor(processed, cv2.COLOR_BGR2RGB), caption=f"Frame {i}", use_container_width=True)
             progress.progress((i+1)/total_frames)
             status.text(f"{t['processing']} {int((i+1)/total_frames*100)}%")
         cap.release()
         os.unlink(tfile.name)
         
+        # 显示第一帧分析结果
+        if first_processed_frame is not None:
+            st.image(first_processed_frame, caption="First frame analysis result", use_container_width=True)
+        else:
+            st.warning(t["no_pose"])
+        
+        # 显示角度变化趋势图
         if frame_angles:
             df_angles = pd.DataFrame(frame_angles)
-            # 选择主要关节绘制趋势
             plot_joints = ['left_knee', 'right_knee', 'left_hip', 'right_hip']
             existing = [j for j in plot_joints if j in df_angles.columns]
             if existing:
