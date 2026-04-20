@@ -105,8 +105,19 @@ uploaded_file = st.file_uploader(t["upload"], type=["jpg","jpeg","png"])
 analyze = st.button(t["analyze"], type="primary")
 
 @st.cache_resource
+@st.cache_resource
 def load_pose():
-    return mp.solutions.pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5)
+    try:
+        return mp.solutions.pose.Pose(
+            static_image_mode=True,
+            model_complexity=1,
+            enable_segmentation=False,
+            min_detection_confidence=0.5
+        )
+    except Exception as e:
+        st.error(f"模型加载失败: {e}")
+        return None
+
 
 if analyze and uploaded_file:
     pose = load_pose()
