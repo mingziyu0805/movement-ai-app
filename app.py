@@ -21,17 +21,27 @@ TEXTS = {
            "angles": "关节", "chart": "图表", "no_pose": "未检测到人体"}
 }
 
-# ================== MediaPipe 安全初始化 ==================
+# ================== 🔥 关键修复：安全加载 MediaPipe ==================
 def load_pose():
     try:
-        return mp.solutions.pose.Pose(
+        import mediapipe as mp
+
+        # 🔥 防止 solutions 丢失（你现在问题核心）
+        if not hasattr(mp, "solutions"):
+            raise ImportError("mediapipe 安装不完整（missing solutions）")
+
+        pose = mp.solutions.pose.Pose(
             static_image_mode=True,
             model_complexity=1,
             min_detection_confidence=0.5
         )
+
+        return pose, mp
+
     except Exception as e:
         st.error(f"Model load failed: {e}")
-        return None
+        return None, None
+
 
 # ================== 角度计算 ==================
 def calc_angle(a, b, c):
@@ -40,15 +50,15 @@ def calc_angle(a, b, c):
     angle = abs(radians * 180.0 / np.pi)
     return 360 - angle if angle > 180 else angle
 
-# ================== pose处理 ==================
-def process(img, pose):
-    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
+# ================== pose处理 ==================
+def process(img, pose, mp):
+    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     results = pose.process(img_rgb)
 
     angles = {}
 
-    if results is None or not results.pose_landmarks:
+    if not results or not results.pose_landmarks:
         return img, angles
 
     lm = results.pose_landmarks.landmark
@@ -95,7 +105,7 @@ st.title(t["title"])
 file = st.file_uploader(t["upload"], type=["jpg", "png", "jpeg"])
 btn = st.button(t["analyze"])
 
-pose = load_pose()
+pose, mp = load_pose()
 
 if btn and file and pose:
 
@@ -107,22 +117,26 @@ if btn and file and pose:
 
     with col1:
         st.subheader(t["original"])
-        st.image(img, channels="BGR", use_column_width=True)
+        st.image(img)
 
-    out, angles = process(img, pose)
+    out, angles = process(img, pose, mp)
 
     with col2:
         st.subheader(t["result"])
-        st.image(out, channels="BGR", use_column_width=True)
+        st.image(out)
 
     if angles:
-        df = pd.DataFrame([(k, v) for k, v in angles.items() if v is not None],
-                          columns=["Joint", "Angle"])
+        df = pd.DataFrame(
+            [(k, v) for k, v in angles.items() if v is not None],
+            columns=["Joint", "Angle"]
+        )
 
         st.dataframe(df)
 
         fig = go.Figure([go.Bar(x=df["Joint"], y=df["Angle"])])
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig)
 
     else:
         st.warning(t["no_pose"])
+
+    pose.close()
