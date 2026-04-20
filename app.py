@@ -138,14 +138,14 @@ if analyze and uploaded_file:
 
     with col1:
         st.subheader(t["original"])
-        st.image(image, use_container_width=True)
+        st.image(image, use_column_width=True)
 
     img_cv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
     processed, angles = process_image(img_cv, pose)
 
     with col2:
         st.subheader(t["result"])
-        st.image(cv2.cvtColor(processed, cv2.COLOR_BGR2RGB), use_container_width=True)
+        st.image(cv2.cvtColor(processed, cv2.COLOR_BGR2RGB), use_column_width=True)
 
     if angles:
         st.subheader(t["angles"])
@@ -165,20 +165,19 @@ if analyze and uploaded_file:
 
         df["Joint"] = df["Joint"].str.lower().replace(name_map)
 
-        st.dataframe(df, use_container_width=True)
+        st.dataframe(df)
 
         fig = go.Figure([
-            go.Bar(x=df["Joint"], y=df["Angle (deg)"], marker_color='lightcoral')
+            go.Bar(x=df["Joint"], y=df["Angle (deg)"])
         ])
 
         fig.update_layout(
             title=t["chart"],
             xaxis_title="",
-            yaxis_title="Degrees",
-            template='plotly_white'
+            yaxis_title="Degrees"
         )
 
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig)
 
     else:
         st.warning(t["no_pose"])
