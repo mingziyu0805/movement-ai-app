@@ -67,9 +67,11 @@ def process_image(image, pose):
     image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     results = pose.process(image_rgb)
     angles = {}
+
     if results.pose_landmarks:
         landmarks = results.pose_landmarks.landmark
         h, w, _ = image.shape
+
         joints = {
             'left_hip': (mp.solutions.pose.PoseLandmark.LEFT_SHOULDER, mp.solutions.pose.PoseLandmark.LEFT_HIP, mp.solutions.pose.PoseLandmark.LEFT_KNEE),
             'right_hip': (mp.solutions.pose.PoseLandmark.RIGHT_SHOULDER, mp.solutions.pose.PoseLandmark.RIGHT_HIP, mp.solutions.pose.PoseLandmark.RIGHT_KNEE),
@@ -82,15 +84,22 @@ def process_image(image, pose):
             'left_shoulder': (mp.solutions.pose.PoseLandmark.LEFT_HIP, mp.solutions.pose.PoseLandmark.LEFT_SHOULDER, mp.solutions.pose.PoseLandmark.LEFT_ELBOW),
             'right_shoulder': (mp.solutions.pose.PoseLandmark.RIGHT_HIP, mp.solutions.pose.PoseLandmark.RIGHT_SHOULDER, mp.solutions.pose.PoseLandmark.RIGHT_ELBOW)
         }
-        for name, (i,j,k) in joints.items():
+
+        for name, (i, j, k) in joints.items():
             try:
                 a = [landmarks[i].x*w, landmarks[i].y*h]
                 b = [landmarks[j].x*w, landmarks[j].y*h]
                 c = [landmarks[k].x*w, landmarks[k].y*h]
-                angles[name] = calculate_angle(a,b,c)
+                angles[name] = calculate_angle(a, b, c)
             except:
                 angles[name] = None
-        mp.solutions.drawing_utils.draw_landmarks(image, results.pose_landmarks, mp.solutions.pose.POSE_CONNECTIONS)
+
+        mp.solutions.drawing_utils.draw_landmarks(
+            image,
+            results.pose_landmarks,
+            mp.solutions.pose.POSE_CONNECTIONS
+        )
+
     return image, angles
 
 st.set_page_config(page_title="Movement AI", layout="wide")
@@ -101,10 +110,9 @@ t = TEXTS[lang_code]
 
 st.title(t["title"])
 
-uploaded_file = st.file_uploader(t["upload"], type=["jpg","jpeg","png"])
+uploaded_file = st.file_uploader(t["upload"], type=["jpg", "jpeg", "png"])
 analyze = st.button(t["analyze"], type="primary")
 
-@st.cache_resource
 @st.cache_resource
 def load_pose():
     try:
@@ -118,22 +126,35 @@ def load_pose():
         st.error(f"模型加载失败: {e}")
         return None
 
-
 if analyze and uploaded_file:
     pose = load_pose()
+
+    if pose is None:
+        st.stop()
+
     col1, col2 = st.columns(2)
-    image = Image.open(uploaded_file)
+
+    image = Image.open(uploaded_file).convert("RGB")
+
     with col1:
         st.subheader(t["original"])
         st.image(image, use_container_width=True)
+
     img_cv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
     processed, angles = process_image(img_cv, pose)
+
     with col2:
         st.subheader(t["result"])
         st.image(cv2.cvtColor(processed, cv2.COLOR_BGR2RGB), use_container_width=True)
+
     if angles:
         st.subheader(t["angles"])
-        df = pd.DataFrame([(k.replace('_',' ').title(), v) for k,v in angles.items() if v], columns=["Joint", "Angle (deg)"])
+
+        df = pd.DataFrame(
+            [(k.replace('_', ' ').title(), v) for k, v in angles.items() if v is not None],
+            columns=["Joint", "Angle (deg)"]
+        )
+
         name_map = {
             'left_hip': t["left_hip"], 'right_hip': t["right_hip"],
             'left_knee': t["left_knee"], 'right_knee': t["right_knee"],
@@ -141,11 +162,25 @@ if analyze and uploaded_file:
             'left_elbow': t["left_elbow"], 'right_elbow': t["right_elbow"],
             'left_shoulder': t["left_shoulder"], 'right_shoulder': t["right_shoulder"]
         }
+
         df["Joint"] = df["Joint"].str.lower().replace(name_map)
+
         st.dataframe(df, use_container_width=True)
-        fig = go.Figure([go.Bar(x=df["Joint"], y=df["Angle (deg)"], marker_color='lightcoral')])
-        fig.update_layout(title=t["chart"], xaxis_title="", yaxis_title="Degrees", template='plotly_white')
+
+        fig = go.Figure([
+            go.Bar(x=df["Joint"], y=df["Angle (deg)"], marker_color='lightcoral')
+        ])
+
+        fig.update_layout(
+            title=t["chart"],
+            xaxis_title="",
+            yaxis_title="Degrees",
+            template='plotly_white'
+        )
+
         st.plotly_chart(fig, use_container_width=True)
+
     else:
         st.warning(t["no_pose"])
+
     pose.close()
