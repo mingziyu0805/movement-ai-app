@@ -3,7 +3,6 @@ import cv2
 import mediapipe as mp
 import numpy as np
 
-# ================== MediaPipe 初始化 ==================
 mp_pose = mp.solutions.pose
 mp_draw = mp.solutions.drawing_utils
 
@@ -13,20 +12,18 @@ pose = mp_pose.Pose(
     min_detection_confidence=0.5
 )
 
-# ================== 角度计算 ==================
 def calc_angle(a, b, c):
     a, b, c = np.array(a), np.array(b), np.array(c)
     radians = np.arctan2(c[1]-b[1], c[0]-b[0]) - np.arctan2(a[1]-b[1], a[0]-b[0])
     angle = abs(radians * 180.0 / np.pi)
     return 360 - angle if angle > 180 else angle
 
-# ================== 核心分析 ==================
 def analyze(image):
     if image is None:
-        return None, "No image"
+        return None, "No image uploaded"
 
-    img_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    results = pose.process(img_rgb)
+    image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+    results = pose.process(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
 
     if not results.pose_landmarks:
         return image, "No pose detected"
@@ -37,21 +34,23 @@ def analyze(image):
     def pt(i):
         return [lm[i].x * w, lm[i].y * h]
 
-    mp_pose_enum = mp_pose.PoseLandmark
+    mp_enum = mp_pose.PoseLandmark
 
     joints = {
-        "left_knee": (mp_pose_enum.LEFT_HIP, mp_pose_enum.LEFT_KNEE, mp_pose_enum.LEFT_ANKLE),
-        "right_knee": (mp_pose_enum.RIGHT_HIP, mp_pose_enum.RIGHT_KNEE, mp_pose_enum.RIGHT_ANKLE),
-        "left_elbow": (mp_pose_enum.LEFT_SHOULDER, mp_pose_enum.LEFT_ELBOW, mp_pose_enum.LEFT_WRIST),
-        "right_elbow": (mp_pose_enum.RIGHT_SHOULDER, mp_pose_enum.RIGHT_ELBOW, mp_pose_enum.RIGHT_WRIST),
+        "left_knee": (mp_enum.LEFT_HIP, mp_enum.LEFT_KNEE, mp_enum.LEFT_ANKLE),
+        "right_knee": (mp_enum.RIGHT_HIP, mp_enum.RIGHT_KNEE, mp_enum.RIGHT_ANKLE),
+        "left_elbow": (mp_enum.LEFT_SHOULDER, mp_enum.LEFT_ELBOW, mp_enum.LEFT_WRIST),
+        "right_elbow": (mp_enum.RIGHT_SHOULDER, mp_enum.RIGHT_ELBOW, mp_enum.RIGHT_WRIST),
+        "left_shoulder": (mp_enum.LEFT_HIP, mp_enum.LEFT_SHOULDER, mp_enum.LEFT_ELBOW),
+        "right_shoulder": (mp_enum.RIGHT_HIP, mp_enum.RIGHT_SHOULDER, mp_enum.RIGHT_ELBOW),
     }
 
-    angles_text = []
+    text = []
 
-    for name, (a, b, c) in joints.items():
+    for k, (a, b, c) in joints.items():
         try:
             angle = calc_angle(pt(a), pt(b), pt(c))
-            angles_text.append(f"{name}: {angle:.1f}°")
+            text.append(f"{k}: {angle:.1f}°")
         except:
             pass
 
@@ -61,18 +60,17 @@ def analyze(image):
         mp_pose.POSE_CONNECTIONS
     )
 
-    return image, "\n".join(angles_text)
+    return cv2.cvtColor(image, cv2.COLOR_BGR2RGB), "\n".join(text)
 
-# ================== Gradio UI ==================
 demo = gr.Interface(
     fn=analyze,
     inputs=gr.Image(type="numpy"),
     outputs=[
-        gr.Image(type="numpy", label="Result Image"),
-        gr.Textbox(label="Joint Angles")
+        gr.Image(type="numpy"),
+        gr.Textbox()
     ],
-    title="AI Movement Analysis",
-    description="Upload image → pose detection → joint angle analysis"
+    title="AI Pose Analysis",
+    description="Upload image → skeleton + joint angles"
 )
 
-demo.launch(server_name="0.0.0.0", server_port=7860)
+demo.launch()
